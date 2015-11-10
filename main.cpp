@@ -70,11 +70,11 @@ public:
 		return front[i];
 	}
 
-	size_t length() const{
+	inline size_t length() const{
 		return count;
 	}
 
-	bool empty() const{
+	inline bool empty() const{
 		return count == 0;
 	}
 
@@ -214,7 +214,7 @@ public:
 		nStep++;
 
 		while(!front->empty()){
-			Coord c = front->pop();
+			const Coord c = front->pop();
 			if (c.i > 0 && !map.mark(id, c.i-1, c.j) && !map.isWall(c.i-1, c.j)){
 				map.mark(id, c.i-1, c.j) = nStep;
 				frontNew->push(Coord(c.i-1, c.j));
@@ -359,7 +359,7 @@ int main(void){
 	map.toHTML("map.html");
 
 	map.clearMarks();
-	find(map, M+N);
+	find(map, 4*(M+N));
 	map.toHTML("map_waves.html");
 
 	printf("Press enter to exit... ");
