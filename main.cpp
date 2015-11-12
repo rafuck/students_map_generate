@@ -259,10 +259,10 @@ public:
 			const Coord c = front->pop();
 			for(int dir = DirectionFirst+1; dir != DirectionLast; ++dir){
 				if (c.canStepTo(static_cast<Direction>(dir), map)){
-					Coord cNew = c.stepTo(static_cast<Direction>(dir));
-					if (!map.mark(id, cNew) && !map.isWall(cNew)){
-						map.mark(id, cNew) = nStep;
-						frontNew->push(cNew);
+					Coord cNext = c.stepTo(static_cast<Direction>(dir));
+					if (!map.mark(id, cNext) && !map.isWall(cNext)){
+						map.mark(id, cNext) = nStep;
+						frontNew->push(cNext);
 					}
 				}	
 			}
@@ -295,10 +295,10 @@ public:
 		for(int k=nStep; k>0; --k){
 			for(int dir = DirectionFirst+1; dir != DirectionLast; ++dir){
 				if (c.canStepTo(static_cast<Direction>(dir), map)){
-					Coord cNew = c.stepTo(static_cast<Direction>(dir));
-					if (map.mark(id, cNew) == k){
-						map.isPath(cNew) = true;
-						c = cNew;
+					Coord cNext = c.stepTo(static_cast<Direction>(dir));
+					if (map.mark(id, cNext) == k){
+						map.isPath(cNext) = true;
+						c = cNext;
 						break;
 					}
 				}	
