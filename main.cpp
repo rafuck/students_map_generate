@@ -256,7 +256,7 @@ public:
 		nStep++;
 
 		while(!front->empty()){
-			const Coord c = front->pop();
+			const Coord &c = front->pop();
 			for(int dir = DirectionFirst+1; dir != DirectionLast; ++dir){
 				if (c.canStepTo(static_cast<Direction>(dir), map)){
 					Coord cNext = c.stepTo(static_cast<Direction>(dir));
@@ -284,8 +284,9 @@ public:
 
 	Coord meetCell(const Map &map) const{
 		for(size_t i=0; i<front->length(); ++i){
-			if (map.mark(0, front->at(i)) && map.mark(1, front->at(i))){
-				return front->at(i);
+			const Coord &c = front->at(i);
+			if (map.mark(0, c) && map.mark(1, c)){
+				return c;
 			}
 		}
 		return Coord(0, 0);
