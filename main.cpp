@@ -1,8 +1,10 @@
 #include <cstdio>
 #include <cstdlib>
-#include <math.h>
+#include <cmath>
 #include <time.h>
 #include <omp.h>
+
+#pragma warning (disable : 4996)
 
 double timer(){
 	static clock_t start = clock();
@@ -15,6 +17,21 @@ double timer(){
 	return ret;
 }
 
+typedef enum{
+	DirectionFirst = 0,
+	Left,
+	Right,
+	Up,
+	Down,
+	DirectionLast
+} Direction;
+
+class IMap{
+public:
+	virtual size_t numRows() const = 0;
+	virtual size_t numCols() const = 0;
+};
+
 struct Coord{
 	union{
 		int row, y, i;
@@ -26,6 +43,26 @@ struct Coord{
 	Coord(int r, int c): row(r), col(c){}
 
 	Coord(): row(0), col(0){}
+
+	inline bool canStepTo(Direction direction, const IMap &map) const{
+		switch(direction){
+			case Left:  return x > 0;
+			case Right: return x < map.numCols() - 1;
+			case Up:    return y < map.numRows() - 1;
+			case Down:  return y > 0;
+			default:    return false;
+		}
+	}
+
+	Coord stepTo(Direction direction) const{
+		switch(direction){
+			case Left:  return Coord(y, x-1);
+			case Right: return Coord(y, x+1);
+			case Up:    return Coord(y+1, x);
+			case Down:  return Coord(y-1, x);
+			default:    return Coord(x, y);
+		}
+	}
 };
 
 class Front{
@@ -62,7 +99,7 @@ public:
 		return (count) ? front[--count] : front[0];
 	}
 
-	Coord &operator[](size_t i) const{
+	inline Coord &operator[](size_t i) const{
 		return this->at(i);
 	}
 
@@ -83,20 +120,23 @@ public:
 	}
 };
 
-class Map{
+class Map: public IMap{
 private:
 	int *_mark[2];
 	bool *_isWall;
+	bool *_isPath;
 	size_t N, M;
 public:
 	Map(size_t pN, size_t pM): N(pN), M(pM){
 		_mark[0] = new int[M*N];
 		_mark[1] = new int[M*N];
 		_isWall  = new bool[M*N];
+		_isPath  = new bool[M*N];
 
 		for(size_t i=0; i<N*M; ++i){
 			_mark[0][i] = _mark[1][i] = 0;
 			_isWall[i] = true;
+			_isPath[i] = false;
 		}
 	}
 
@@ -104,6 +144,7 @@ public:
 		delete[] _mark[0];
 		delete[] _mark[1];
 		delete[] _isWall;
+		delete[] _isPath;
 	}
 
 
@@ -123,12 +164,8 @@ public:
 		return _isWall[c.i*M + c.j];
 	}
 
-	inline int &mark(int id, int i, int j) const{
-		return _mark[id][i*M + j];
-	}
-
-	inline bool &isWall(int i, int j) const{
-		return _isWall[i*M + j];
+	inline bool &isPath(const Coord &c) const{
+		return _isPath[c.i*M + c.j];
 	}
 
 	void clearMarks(){
@@ -139,11 +176,13 @@ public:
 
 	void toHTML(const char *fname) const{
 		FILE *fp = fopen(fname, "w");
-		fprintf(fp, "<!DOCTYPE html><html><body>"
-			"<style>"
+		fprintf(fp, "<!DOCTYPE html><html><body> "
+			"<style> "
+			"html, body{background-color:#fff; padding:0; margin:0} "
 			"table{border:1px solid #eee; border-right:0; border-top: 0} "
 			"td{border:1px solid #eee; border-left:0; border-bottom:0; width: 5px; height: 5px} "
 			"td.wall{background-color: #f0f0f0} "
+			"td.path{background-color: #00ff00} "
 			"</style>"
 			"<table cellspacing=\"0\" cellpadding=\"0\" border=\"0\">");
 		
@@ -160,9 +199,12 @@ public:
 				if (_isWall[k]){
 					fprintf(fp, "<td class=\"wall\"></td>");
 				}
+				else if (_isPath[k]){
+					fprintf(fp, "<td class=\"path\"></td>");
+				}
 				else{
-					int cl0 = round(ceil(255.0*_mark[0][k]/max[0]));
-					int cl1 = round(ceil(255.0*_mark[1][k]/max[1]));
+					int cl0 = std::round(std::ceil(255.0*_mark[0][k]/max[0]));
+					int cl1 = std::round(std::ceil(255.0*_mark[1][k]/max[1]));
 					fprintf(fp, "<td style=\"background-color:rgb(%d, %d, 255)\"></td>", cl0, cl1);
 				}
 				k++;
@@ -215,21 +257,14 @@ public:
 
 		while(!front->empty()){
 			const Coord c = front->pop();
-			if (c.i > 0 && !map.mark(id, c.i-1, c.j) && !map.isWall(c.i-1, c.j)){
-				map.mark(id, c.i-1, c.j) = nStep;
-				frontNew->push(Coord(c.i-1, c.j));
-			}
-			if (c.i < map.numRows()-1 && !map.mark(id, c.i+1, c.j) && !map.isWall(c.i+1, c.j)){
-				map.mark(id, c.i+1, c.j) = nStep;
-				frontNew->push(Coord(c.i+1, c.j));
-			}
-			if (c.j > 0 && !map.mark(id, c.i, c.j-1) && !map.isWall(c.i, c.j-1)){
-				map.mark(id, c.i, c.j-1) = nStep;
-				frontNew->push(Coord(c.i, c.j-1));
-			}
-			if (c.j < map.numCols()-1 && !map.mark(id, c.i, c.j+1) && !map.isWall(c.i, c.j+1)){
-				map.mark(id, c.i, c.j+1) = nStep;
-				frontNew->push(Coord(c.i, c.j+1));
+			for(int dir = DirectionFirst+1; dir != DirectionLast; ++dir){
+				if (c.canStepTo(static_cast<Direction>(dir), map)){
+					Coord cNew = c.stepTo(static_cast<Direction>(dir));
+					if (!map.mark(id, cNew) && !map.isWall(cNew)){
+						map.mark(id, cNew) = nStep;
+						frontNew->push(cNew);
+					}
+				}	
 			}
 		}
 
@@ -245,6 +280,30 @@ public:
 			}
 		}
 		return false;
+	}
+
+	Coord meetCell(const Map &map) const{
+		for(size_t i=0; i<front->length(); ++i){
+			if (map.mark(0, front->at(i)) && map.mark(1, front->at(i))){
+				return front->at(i);
+			}
+		}
+		return Coord(0, 0);
+	}
+
+	void backward(Map &map, Coord c) const{
+		for(int k=nStep; k>0; --k){
+			for(int dir = DirectionFirst+1; dir != DirectionLast; ++dir){
+				if (c.canStepTo(static_cast<Direction>(dir), map)){
+					Coord cNew = c.stepTo(static_cast<Direction>(dir));
+					if (map.mark(id, cNew) == k){
+						map.isPath(cNew) = true;
+						c = cNew;
+						break;
+					}
+				}	
+			}	
+		}
 	}
 };
 
@@ -343,17 +402,20 @@ bool find(Map &map, int maxIter){
 			isContinue[id] = !waves[id].isEnd(map);
 			#pragma omp barrier
 		}
+
+		Coord meetCell = waves[(!isContinue[0]) ? 0 : 1].meetCell(map);
+		waves[id].backward(map, meetCell);
 	}
-	
+
 	double T = timer();
 	printf("Finded    at %e s; %e s per iteration\n", T, T/iteration);
 	return (iteration < maxIter);
 }
 
 int main(void){
-	const size_t N = 512;
-	const size_t M = 512;
-	
+	const size_t N = 256;
+	const size_t M = 256;
+
 	Map map(N, M);
 	generate(map, M*N);
 	map.toHTML("map.html");

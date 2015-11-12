@@ -12,4 +12,4 @@ main.o: main.cpp
 	$(CPP) $(PATH_INC) -O2 $(FLAGS) $< -c -o $@
 
 clean:
-	rm -rf *.o map
+	rm -rf *.o *.html map
