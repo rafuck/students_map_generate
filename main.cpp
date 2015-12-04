@@ -3,7 +3,11 @@
 #include <cmath>
 #include <time.h>
 #include <omp.h>
+#include <atomic>
+#include <unistd.h>
+#include "barrier.h"
 
+// disable unsecure fopen warning in MSVC
 #pragma warning (disable : 4996)
 
 double timer(){
@@ -60,7 +64,7 @@ struct Coord{
 			case Right: return Coord(y, x+1);
 			case Up:    return Coord(y+1, x);
 			case Down:  return Coord(y-1, x);
-			default:    return Coord(x, y);
+			default:    return Coord(y, x);
 		}
 	}
 };
@@ -178,11 +182,11 @@ public:
 		FILE *fp = fopen(fname, "w");
 		fprintf(fp, "<!DOCTYPE html><html><body> "
 			"<style> "
-			"html, body{background-color:#fff; padding:0; margin:0} "
-			"table{border:1px solid #eee; border-right:0; border-top: 0} "
-			"td{border:1px solid #eee; border-left:0; border-bottom:0; width: 5px; height: 5px} "
-			"td.wall{background-color: #f0f0f0} "
-			"td.path{background-color: #00ff00} "
+				"html, body{background-color:#fff; padding:0; margin:0} "
+				"table{border:1px solid #eee; border-right:0; border-top:0} "
+				"td{border:1px solid #eee; border-left:0; border-bottom:0; width: 5px; height: 5px} "
+				"td.wall{background-color: #f0f0f0} "
+				"td.path{background-color: #00ff00} "
 			"</style>"
 			"<table cellspacing=\"0\" cellpadding=\"0\" border=\"0\">");
 		
@@ -308,12 +312,12 @@ public:
 	}
 };
 
-class Warm{
+class Worm{
 private:
 	Coord c;
 	int id, nStep;
 public:
-	Warm():id(0), nStep(0){}
+	Worm():id(0), nStep(0){}
 
 	void init(int pid, Coord pc, const Map &map){
 		c    = pc;
@@ -353,11 +357,11 @@ public:
 
 bool generate(Map &map, int maxIter){
 	srand(time(NULL));
-	Warm warms[4];
-	warms[0].init(0, Coord(0, 0), map);
-	warms[1].init(1, Coord(map.numRows()-1, map.numCols()-1), map);
-	warms[2].init(2, Coord(map.numRows()-1, 0), map);
-	warms[3].init(3, Coord(0, map.numCols()-1), map);
+	Worm worms[4];
+	worms[0].init(0, Coord(0, 0), map);
+	worms[1].init(1, Coord(map.numRows()-1, map.numCols()-1), map);
+	worms[2].init(2, Coord(map.numRows()-1, 0), map);
+	worms[3].init(3, Coord(0, map.numCols()-1), map);
 
 	int iteration = 0;
 	bool isContinue = true;
@@ -366,12 +370,12 @@ bool generate(Map &map, int maxIter){
 	{
 		int id = omp_get_thread_num();
 		while(isContinue){
-			warms[id].step(map);
+			worms[id].step(map);
 			#pragma omp barrier
 			#pragma omp master
 			{
 				iteration++;
-				isContinue = iteration < maxIter && !warms[0].isEnd(map) && !warms[1].isEnd(map);
+				isContinue = iteration < maxIter && !worms[0].isEnd(map) && !worms[1].isEnd(map);
 			}
 			#pragma omp barrier
 		}
@@ -413,7 +417,68 @@ bool find(Map &map, int maxIter){
 	return (iteration < maxIter);
 }
 
+template<typename T>
+T reduceSum(T *v, size_t N){
+	T s = 0;
+	for(size_t i=0; i<N; ++i){
+		s += v[i];
+	}
+	return s;
+}
+
 int main(void){
+	const size_t nThreads = 10;
+	BarrierCounter bc(nThreads);
+	Barrier b(nThreads);
+	timer();
+
+	#pragma omp parallel num_threads(nThreads)
+	{
+		size_t threadId = omp_get_thread_num();
+		for(int i=0; i<10; ++i){
+			printf("%d", i);
+			#pragma omp barrier
+			if(threadId == 0){
+				printf("\n");
+			}
+			#pragma omp barrier
+		}
+	}
+	printf("OpenMP = %e s\n", timer());
+
+
+	#pragma omp parallel num_threads(nThreads)
+	{
+		size_t threadId = omp_get_thread_num();
+		for(int i=0; i<10; ++i){
+			printf("%d", i);
+			bc.barrier(threadId);
+
+			if(threadId == nThreads-1){
+				printf("\n");
+			}
+			bc.barrier(threadId);
+		}
+	}
+	printf("barrier counter = %e s\n", timer());
+
+	#pragma omp parallel num_threads(nThreads)
+	{
+		size_t threadId = omp_get_thread_num();
+		for(int i=0; i<10; ++i){
+			printf("%d", i);
+			b.barrier(threadId);
+
+			if(threadId == nThreads-1){
+				printf("\n");
+			}
+			b.barrier(threadId);
+		}
+	}
+	printf("barrier messages = %e s\n", timer());
+
+	return EXIT_SUCCESS;
+
 	const size_t N = 256;
 	const size_t M = 256;
 
